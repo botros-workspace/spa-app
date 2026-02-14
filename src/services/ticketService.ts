@@ -8,7 +8,17 @@ import {
 import { isPaymentValid } from '@/utils/validators'
 import { SPA_CONFIG } from '@/constant/spa'
 
-export function getTicket(customerName: string): Ticket {
+export function getTicket(customerName: string): Ticket | string {
+  const tickets = useSpaStore.getState().tickets
+  const activeCount = tickets.filter((ticket) => !ticket.returnedAt).length
+  const freeSpaces = SPA_CONFIG.TOTAL_CAPACITY - activeCount
+
+  if (freeSpaces <= 0) {
+    const error =
+      'Spa is FULL! No tickets available. Please wait for someone to exit.'
+    console.error(error)
+    return error
+  }
   const ticket: Ticket = {
     barcode: generateBarcode(),
     entryTime: Date.now(),
@@ -85,7 +95,11 @@ export function payTicket(
     console.error(error)
     return error
   }
-
+  if (!paymentMethod) {
+    const error = `Payment method is required to pay for ticket ${barcode}`
+    console.error(error)
+    return error
+  }
   if (ticket.isPaid) {
     const message = `Ticket ${barcode} is already paid`
     console.warn(message)
@@ -130,6 +144,9 @@ export function getTicketState(barcode: string): string {
   }
 
   if (ticket.isPaid && isPaymentValid(ticket)) {
+    useSpaStore.getState().updateTicket(barcode, {
+      returnedAt: Date.now()
+    })
     const success = `Exit Approved!\nHave a nice day, we hope you enjoyed your time with us, ${ticket.customerName}!`
     console.log(success)
     return success
@@ -159,4 +176,14 @@ export function getTicketState(barcode: string): string {
   const message = `Payment Required\nTicket not paid.\nAmount due: €${fullPrice}\nPlease pay to exit.`
   console.warn(message)
   return message
+}
+
+export function getFreeSpaces(): number {
+  const tickets = useSpaStore.getState().tickets
+  const activeCount = tickets.filter((ticket) => !ticket.returnedAt).length
+  const freeSpaces = SPA_CONFIG.TOTAL_CAPACITY - activeCount
+  console.log(
+    `Capacity: ${activeCount}/${SPA_CONFIG.TOTAL_CAPACITY} occupied, ${freeSpaces} free`
+  )
+  return freeSpaces
 }

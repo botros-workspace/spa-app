@@ -8,4 +8,5 @@ export type Ticket = {
   paidAt?: number
   paymentMethod?: PaymentMethod
   shouldPayPenalty?: boolean
+  returnedAt?: number
 }

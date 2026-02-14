@@ -6,7 +6,8 @@ import {
   calculatePrice,
   getTicket,
   getTicketState,
-  payTicket
+  payTicket,
+  getFreeSpaces
 } from '@/services/ticketService'
 
 export default function Home() {
@@ -16,6 +17,14 @@ export default function Home() {
       ;(window as any).calculatePrice = calculatePrice
       ;(window as any).payTicket = payTicket
       ;(window as any).getTicketState = getTicketState
+      ;(window as any).getFreeSpaces = getFreeSpaces
+      console.log('Console API Ready!')
+      console.log('Available commands:')
+      console.log('Task #1: getTicket(name)')
+      console.log('Task #2: calculatePrice(barcode)')
+      console.log('Task #3: payTicket(barcode, method)')
+      console.log('Task #4: getTicketState(barcode)')
+      console.log('Task #5: getFreeSpaces()')
     }
   }, [])
   return (
