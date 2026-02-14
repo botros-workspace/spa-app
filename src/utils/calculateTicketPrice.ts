@@ -20,3 +20,13 @@ export function calculatePriceFromTime(
   const additionalHours = hours - SPA_CONFIG.FIXED_HOURS
   return SPA_CONFIG.FIXED_PRICE + additionalHours * SPA_CONFIG.HOURLY_RATE
 }
+export function calculatePenaltyPrice(paidAt: number): number {
+  const now = Date.now()
+  const timeSincePayment = now - paidAt
+  const hoursSincePayment = timeSincePayment / (1000 * 60 * 60)
+
+  const penaltyHours = Math.ceil(
+    hoursSincePayment - SPA_CONFIG.GRACE_PERIOD_MINUTES / 60
+  )
+  return penaltyHours * SPA_CONFIG.HOURLY_RATE
+}

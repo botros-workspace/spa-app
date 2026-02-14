@@ -7,4 +7,5 @@ export type Ticket = {
   isPaid?: boolean
   paidAt?: number
   paymentMethod?: PaymentMethod
+  shouldPayPenalty?: boolean
 }

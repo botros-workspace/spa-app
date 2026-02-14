@@ -3,4 +3,5 @@ export const SPA_CONFIG = {
   FIXED_PRICE: 30,
   FIXED_HOURS: 3,
   HOURLY_RATE: 3,
+  GRACE_PERIOD_MINUTES: 15
 } as const

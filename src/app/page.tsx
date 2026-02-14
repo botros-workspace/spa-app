@@ -2,7 +2,12 @@
 import Image from 'next/image'
 import styles from './page.module.css'
 import { useEffect } from 'react'
-import { calculatePrice, getTicket, payTicket } from '@/services/ticketService'
+import {
+  calculatePrice,
+  getTicket,
+  getTicketState,
+  payTicket
+} from '@/services/ticketService'
 
 export default function Home() {
   useEffect(() => {
@@ -10,6 +15,7 @@ export default function Home() {
       ;(window as any).getTicket = getTicket
       ;(window as any).calculatePrice = calculatePrice
       ;(window as any).payTicket = payTicket
+      ;(window as any).getTicketState = getTicketState
     }
   }, [])
   return (
