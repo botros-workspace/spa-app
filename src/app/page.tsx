@@ -2,12 +2,13 @@
 import Image from 'next/image'
 import styles from './page.module.css'
 import { useEffect } from 'react'
-import { getTicket } from '@/services/ticketService'
+import { calculatePrice, getTicket } from '@/services/ticketService'
 
 export default function Home() {
   useEffect(() => {
     if (typeof window !== 'undefined') {
       ;(window as any).getTicket = getTicket
+      ;(window as any).calculatePrice = calculatePrice
     }
   }, [])
   return (
