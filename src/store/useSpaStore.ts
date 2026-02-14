@@ -5,6 +5,7 @@ import { Ticket } from '../types/ticket'
 interface SpaStore {
   tickets: Ticket[]
   addTicket: (ticket: Ticket) => void
+  updateTicket: (barcode: string, updates: Partial<Ticket>) => void
 }
 export const useSpaStore = create<SpaStore>()(
   persist(
@@ -13,11 +14,18 @@ export const useSpaStore = create<SpaStore>()(
 
       addTicket: (ticket) =>
         set((state) => ({
-          tickets: [...state.tickets, ticket],
+          tickets: [...state.tickets, ticket]
         })),
+      updateTicket: (barcode, updates) =>
+        set((state) => ({
+          tickets: state.tickets.map((ticket) =>
+            ticket.barcode === barcode ? { ...ticket, ...updates } : ticket
+          )
+        }))
     }),
+
     {
-      name: 'spa-storage',
+      name: 'spa-storage'
     }
   )
 )
