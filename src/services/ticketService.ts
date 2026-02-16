@@ -51,7 +51,9 @@ export function calculatePrice(barcode: string): number | string {
       ticket.entryTime,
       ticket.paidAt
     )
-    const penaltyPrice = calculatePenaltyPrice(ticket.paidAt)
+    const totalAmount = ticket.penaltyPrice
+      ? ticket.penaltyPrice.reduce((sum, p) => sum + p, originalPrice)
+      : originalPrice
     const receipt = `
         Already PAID - Receipt
         Barcode:     ${ticket.barcode}
@@ -59,9 +61,7 @@ export function calculatePrice(barcode: string): number | string {
         Entry:       ${new Date(ticket.entryTime).toLocaleString()}
         Paid at:     ${new Date(ticket.paidAt).toLocaleString()}
         Method:      ${ticket.paymentMethod.toUpperCase()}
-        Amount Paid: €${
-          ticket.shouldPayPenalty ? penaltyPrice + originalPrice : originalPrice
-        }
+        Amount Paid: €${totalAmount}
         Current Price: €0
         Status: PAID 
     `.trim()
@@ -69,20 +69,23 @@ export function calculatePrice(barcode: string): number | string {
     console.log(receipt)
     return receipt
   }
-  if (!ticket.isPaid && ticket.shouldPayPenalty && ticket.paidAt) {
-    const penaltyPrice = calculatePenaltyPrice(ticket.paidAt)
-    const message = `Ticket ${barcode} has an expired payment. Please pay the penalty of €${penaltyPrice} to exit.`
+  if (!ticket.isPaid && ticket.penaltyPrice && ticket.paidAt) {
+    const message = `Ticket ${barcode} has an expired payment. Please pay the penalty of €${ticket.penaltyPrice.at(
+      -1
+    )} to exit.`
     return message
   }
   const price = calculatePriceFromTime(ticket.entryTime)
 
   const hours = Math.ceil((Date.now() - ticket.entryTime) / (1000 * 60 * 60))
-  console.log(`Price for ticket ${barcode}`)
-  console.log(`Customer: ${ticket.customerName}`)
-  console.log(`Duration: ${hours} hour(s)`)
-  console.log(`Price: €${price}`)
-
-  return price
+  const priceDetails = `
+  Price for ticket ${barcode}
+  Customer: ${ticket.customerName}
+  Duration: ${hours} hour(s)
+  Price: €${price}
+  `.trim()
+  console.log(priceDetails)
+  return priceDetails
 }
 export function payTicket(
   barcode: string,
@@ -100,19 +103,25 @@ export function payTicket(
     console.error(error)
     return error
   }
+  if (!['credit', 'debit', 'cash'].includes(paymentMethod)) {
+    const error = `Invalid payment method: ${paymentMethod}. Must be 'credit', 'debit', or 'cash'.`
+    console.error(error)
+    return error
+  }
   if (ticket.isPaid) {
     const message = `Ticket ${barcode} is already paid`
     console.warn(message)
     return message
   }
-  if (!ticket.isPaid && ticket.shouldPayPenalty && ticket.paidAt) {
-    const penaltyPrice = calculatePenaltyPrice(ticket.paidAt)
+  if (!ticket.isPaid && ticket.penaltyPrice && ticket.paidAt) {
     useSpaStore.getState().updateTicket(barcode, {
       isPaid: true,
       paidAt: Date.now(),
       paymentMethod: paymentMethod
     })
-    const message = `Ticket ${barcode} had an expired payment. Penalty of €${penaltyPrice} has been paid. Thank you!`
+    const message = `Ticket ${barcode} had an expired payment. Penalty of €${ticket.penaltyPrice?.at(
+      -1
+    )} has been paid. Thank you!`
     return message
   }
   const price = calculatePriceFromTime(ticket.entryTime)
@@ -142,7 +151,14 @@ export function getTicketState(barcode: string): string {
     console.error(error)
     return error
   }
-
+  if (ticket.returnedAt) {
+    const message = `Ticket ${barcode} has already exited at ${new Date(
+      ticket.returnedAt
+    ).toLocaleString()}.`
+    console.warn(message)
+    calculatePrice(barcode)
+    return message
+  }
   if (ticket.isPaid && isPaymentValid(ticket)) {
     useSpaStore.getState().updateTicket(barcode, {
       returnedAt: Date.now()
@@ -152,23 +168,26 @@ export function getTicketState(barcode: string): string {
     return success
   }
 
-  if (ticket.isPaid && !isPaymentValid(ticket)) {
+  if (ticket.isPaid && !isPaymentValid(ticket) && ticket.paidAt) {
     useSpaStore.getState().updateTicket(barcode, {
       isPaid: false,
-      shouldPayPenalty: true
+      penaltyPrice: ticket.penaltyPrice
+        ? [...ticket.penaltyPrice, calculatePenaltyPrice(ticket.paidAt)]
+        : [calculatePenaltyPrice(ticket.paidAt)]
     })
 
     const minutesExpired = Math.floor(
-      (Date.now() - ticket.paidAt!) / (1000 * 60) -
+      (Date.now() - ticket.paidAt) / (1000 * 60) -
         SPA_CONFIG.GRACE_PERIOD_MINUTES
     )
     const message = `Grace Period Expired\nYour payment expired ${minutesExpired} minute(s) ago.\nPlease pay the penalty to exit.`
     console.warn(message)
     return message
   }
-  if (!ticket.isPaid && ticket.shouldPayPenalty) {
-    const penaltyAmount = calculatePenaltyPrice(ticket.paidAt!)
-    const message = `Penalty Payment Required\nYour previous payment expired.\nPenalty: €${penaltyAmount}\nPlease pay to exit.`
+  if (!ticket.isPaid && ticket.penaltyPrice) {
+    const message = `Penalty Payment Required\nYour previous payment expired.\nPenalty: €${ticket.penaltyPrice?.at(
+      -1
+    )}\nPlease pay to exit.`
     console.warn(message)
     return message
   }
