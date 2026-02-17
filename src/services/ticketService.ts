@@ -7,29 +7,41 @@ import {
 } from '@/utils/calculateTicketPrice'
 import { isPaymentValid } from '@/utils/validators'
 import { SPA_CONFIG } from '@/constant/spa'
+import {
+  CapacityResult,
+  PaymentResult,
+  PriceResult,
+  StateResult,
+  TicketResult
+} from '@/types/result'
 
-export function getTicket(customerName: string): Ticket | string {
+export function getTicket(customerName: string): TicketResult {
   const tickets = useSpaStore.getState().tickets
   const activeCount = tickets.filter((ticket) => !ticket.returnedAt).length
   const freeSpaces = SPA_CONFIG.TOTAL_CAPACITY - activeCount
 
   if (freeSpaces <= 0) {
-    const error =
+    const errorMessage =
       'Spa is FULL! No tickets available. Please wait for someone to exit.'
-    console.error(error)
-    return error
+    return {
+      success: false,
+      error: errorMessage
+    }
   }
   const ticket: Ticket = {
     barcode: generateBarcode(),
     entryTime: Date.now(),
     customerName: customerName
   }
-
   useSpaStore.getState().addTicket(ticket)
-
-  console.log('Ticket issued:', ticket)
-
-  return ticket
+  return {
+    success: true,
+    data: {
+      ticket,
+      freeSpaces: freeSpaces - 1
+    },
+    message: `Ticket issued successfully for ${customerName}`
+  }
 }
 
 export function findTicketByBarcode(barcode: string): Ticket | undefined {
@@ -37,13 +49,16 @@ export function findTicketByBarcode(barcode: string): Ticket | undefined {
   return tickets.find((t) => t.barcode === barcode)
 }
 
-export function calculatePrice(barcode: string): number | string {
+export function calculatePrice(barcode: string): PriceResult {
   const ticket = findTicketByBarcode(barcode)
 
   if (!ticket) {
     const error = `Ticket not found: ${barcode}`
     console.error(error)
-    return error
+    return {
+      success: false,
+      error: `Ticket ${barcode} not found`
+    }
   }
 
   if (ticket.isPaid && ticket.paidAt && ticket.paymentMethod) {
@@ -67,51 +82,69 @@ export function calculatePrice(barcode: string): number | string {
     `.trim()
 
     console.log(receipt)
-    return receipt
+    return {
+      success: true,
+      data: {
+        price: 0,
+        isPaid: true,
+        hasPenalty: false,
+        receipt
+      },
+      message: 'Ticket is paid'
+    }
   }
   if (!ticket.isPaid && ticket.penaltyPrice && ticket.paidAt) {
-    const message = `Ticket ${barcode} has an expired payment. Please pay the penalty of €${ticket.penaltyPrice.at(
-      -1
-    )} to exit.`
-    return message
+    const latestPenalty = ticket.penaltyPrice.at(-1) || 0
+    const message = `Ticket ${barcode} has an expired payment. Please pay the penalty of €${latestPenalty} to exit.`
+    return {
+      success: true,
+      data: {
+        price: latestPenalty,
+        isPaid: false,
+        hasPenalty: true
+      },
+      message: message
+    }
   }
   const price = calculatePriceFromTime(ticket.entryTime)
 
   const hours = Math.ceil((Date.now() - ticket.entryTime) / (1000 * 60 * 60))
-  const priceDetails = `
-  Price for ticket ${barcode}
-  Customer: ${ticket.customerName}
-  Duration: ${hours} hour(s)
-  Price: €${price}
-  `.trim()
-  console.log(priceDetails)
-  return priceDetails
+
+  return {
+    success: true,
+    data: {
+      price,
+      isPaid: false,
+      hasPenalty: false,
+      hours
+    },
+    message: `Price: €${price} for ${hours} hour(s)`
+  }
 }
 export function payTicket(
   barcode: string,
   paymentMethod: PaymentMethod
-): string {
+): PaymentResult {
   const ticket = findTicketByBarcode(barcode)
 
   if (!ticket) {
-    const error = `Ticket not found: ${barcode}`
-    console.error(error)
-    return error
+    const errorMessage = `Ticket not found: ${barcode}`
+    return {
+      success: false,
+      error: errorMessage
+    }
   }
   if (!paymentMethod) {
-    const error = `Payment method is required to pay for ticket ${barcode}`
-    console.error(error)
-    return error
-  }
-  if (!['credit', 'debit', 'cash'].includes(paymentMethod)) {
-    const error = `Invalid payment method: ${paymentMethod}. Must be 'credit', 'debit', or 'cash'.`
-    console.error(error)
-    return error
+    return {
+      success: false,
+      error: 'Payment method is required'
+    }
   }
   if (ticket.isPaid) {
-    const message = `Ticket ${barcode} is already paid`
-    console.warn(message)
-    return message
+    return {
+      success: false,
+      error: 'Ticket is already paid'
+    }
   }
   if (!ticket.isPaid && ticket.penaltyPrice && ticket.paidAt) {
     useSpaStore.getState().updateTicket(barcode, {
@@ -119,10 +152,15 @@ export function payTicket(
       paidAt: Date.now(),
       paymentMethod: paymentMethod
     })
-    const message = `Ticket ${barcode} had an expired payment. Penalty of €${ticket.penaltyPrice?.at(
-      -1
-    )} has been paid. Thank you!`
-    return message
+    const penaltyAmount = ticket.penaltyPrice.at(-1) || 0
+    return {
+      success: true,
+      data: {
+        amountPaid: penaltyAmount,
+        newBalance: 0
+      },
+      message: `Penalty of €${penaltyAmount} paid successfully`
+    }
   }
   const price = calculatePriceFromTime(ticket.entryTime)
 
@@ -132,77 +170,119 @@ export function payTicket(
     paymentMethod: paymentMethod
   })
 
-  const success = `
-      Payment Successful!
-      Amount: €${price}
-      Method: ${paymentMethod.toUpperCase()}
-      See you next time, ${ticket.customerName}!
-    `.trim()
-
-  console.log(success)
-  return success
+  return {
+    success: true,
+    data: {
+      amountPaid: price,
+      newBalance: 0
+    },
+    message: `Payment of €${price} successful`
+  }
 }
 
-export function getTicketState(barcode: string): string {
+export function getTicketState(barcode: string): StateResult {
   const ticket = findTicketByBarcode(barcode)
 
   if (!ticket) {
-    const error = `Ticket not found: ${barcode}`
-    console.error(error)
-    return error
+    return {
+      success: false,
+      error: `Ticket ${barcode} not found`
+    }
   }
   if (ticket.returnedAt) {
-    const message = `Ticket ${barcode} has already exited at ${new Date(
-      ticket.returnedAt
-    ).toLocaleString()}.`
-    console.warn(message)
-    calculatePrice(barcode)
-    return message
+    return {
+      success: false,
+      error: `Ticket already exited at ${new Date(
+        ticket.returnedAt
+      ).toLocaleString()}`
+    }
   }
   if (ticket.isPaid && isPaymentValid(ticket)) {
     useSpaStore.getState().updateTicket(barcode, {
       returnedAt: Date.now()
     })
-    const success = `Exit Approved!\nHave a nice day, we hope you enjoyed your time with us, ${ticket.customerName}!`
-    console.log(success)
-    return success
+    return {
+      success: true,
+      data: {
+        canExit: true,
+        details: {
+          isPaid: true,
+          hasPenalty: false,
+          exitTime: Date.now()
+        }
+      },
+      message: `Exit approved! Have a nice day, ${ticket.customerName}!`
+    }
   }
 
   if (ticket.isPaid && !isPaymentValid(ticket) && ticket.paidAt) {
+    const penaltyAmount = calculatePenaltyPrice(ticket.paidAt)
     useSpaStore.getState().updateTicket(barcode, {
       isPaid: false,
       penaltyPrice: ticket.penaltyPrice
-        ? [...ticket.penaltyPrice, calculatePenaltyPrice(ticket.paidAt)]
-        : [calculatePenaltyPrice(ticket.paidAt)]
+        ? [...ticket.penaltyPrice, penaltyAmount]
+        : [penaltyAmount]
     })
 
     const minutesExpired = Math.floor(
       (Date.now() - ticket.paidAt) / (1000 * 60) -
         SPA_CONFIG.GRACE_PERIOD_MINUTES
     )
-    const message = `Grace Period Expired\nYour payment expired ${minutesExpired} minute(s) ago.\nPlease pay the penalty to exit.`
-    console.warn(message)
-    return message
+    return {
+      success: false,
+      error: `Grace period expired ${minutesExpired} minute(s) ago`,
+      data: {
+        canExit: false,
+        details: {
+          isPaid: false,
+          hasPenalty: true,
+          penaltyAmount,
+          minutesExpired
+        }
+      }
+    }
   }
   if (!ticket.isPaid && ticket.penaltyPrice) {
-    const message = `Penalty Payment Required\nYour previous payment expired.\nPenalty: €${ticket.penaltyPrice?.at(
-      -1
-    )}\nPlease pay to exit.`
-    console.warn(message)
-    return message
+    const penaltyAmount = ticket.penaltyPrice[ticket.penaltyPrice.length - 1]
+    return {
+      success: false,
+      error: 'Penalty payment required',
+      data: {
+        canExit: false,
+        details: {
+          isPaid: false,
+          hasPenalty: true,
+          penaltyAmount
+        }
+      }
+    }
   }
   const fullPrice = calculatePriceFromTime(ticket.entryTime)
-  const message = `Payment Required\nTicket not paid.\nAmount due: €${fullPrice}\nPlease pay to exit.`
-  console.warn(message)
-  return message
+  return {
+    success: false,
+    error: 'Payment required',
+    data: {
+      canExit: false,
+      details: {
+        isPaid: false,
+        hasPenalty: false,
+        fullPrice
+      }
+    }
+  }
 }
 
-export function getFreeSpaces(): number {
+export function getFreeSpaces(): CapacityResult {
   const tickets = useSpaStore.getState().tickets
   const activeCount = tickets.filter((ticket) => !ticket.returnedAt).length
   const freeSpaces = SPA_CONFIG.TOTAL_CAPACITY - activeCount
-  console.log(
-    `Capacity: ${activeCount}/${SPA_CONFIG.TOTAL_CAPACITY} occupied, ${freeSpaces} free`
-  )
-  return freeSpaces
+  return {
+    success: true,
+    data: {
+      total: SPA_CONFIG.TOTAL_CAPACITY,
+      occupied: activeCount,
+      free: freeSpaces
+    },
+    message: `${freeSpaces} spaces available`
+  }
 }
